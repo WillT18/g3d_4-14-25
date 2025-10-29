@@ -11,6 +11,8 @@
 return function (path, uFlip, vFlip)
     local positions, uvs, normals = {}, {}, {}
     local result = {}
+    local unique = {}
+    local repeated = {}
 
     -- go line by line through the file
     for line in love.filesystem.lines(path) do
@@ -25,8 +27,13 @@ return function (path, uFlip, vFlip)
 
         if firstWord == "v" then
             -- if the first word in this line is a "v", then this defines a vertex's position
+			-- for an unofficial .OBJ format (supported in blender), it can also contain color information
 
-            table.insert(positions, {tonumber(words[2]), tonumber(words[3]), tonumber(words[4])})
+            local t = {}
+            for i=2,#words do
+                t[i-1] = tonumber(words[i])
+            end
+            table.insert(positions, t)
         elseif firstWord == "vt" then
             -- if the first word in this line is a "vt", then this defines a texture coordinate
 
@@ -44,22 +51,31 @@ return function (path, uFlip, vFlip)
 
             -- if the first word in this line is a "f", then this is a face
             -- a face takes three point definitions
-            -- the arguments a point definition takes are vertex, vertex texture, vertex normal in that order
+            -- the arguments a point definition takes are vertex (and color), vertex texture, vertex normal in that order
 
             local vertices = {}
             for i = 2, #words do
                 local v, vt, vn = words[i]:match "(%d*)/(%d*)/(%d*)"
                 v, vt, vn = tonumber(v), tonumber(vt), tonumber(vn)
-                table.insert(vertices, {
-                    v and positions[v][1] or 0,
-                    v and positions[v][2] or 0,
-                    v and positions[v][3] or 0,
-                    vt and uvs[vt][1] or 0,
-                    vt and uvs[vt][2] or 0,
-                    vn and normals[vn][1] or 0,
-                    vn and normals[vn][2] or 0,
-                    vn and normals[vn][3] or 0,
-                })
+				local word = words[i]
+                if not repeated[word] then
+                    table.insert( unique, {
+                        v and positions[v][1] or 0,
+                        v and positions[v][2] or 0,
+                        v and positions[v][3] or 0,
+                        vt and uvs[vt][1],
+                        vt and uvs[vt][2],
+                        vn and normals[vn][1],
+                        vn and normals[vn][2],
+                        vn and normals[vn][3],
+                        v and positions[v][4],
+                        v and positions[v][5],
+                        v and positions[v][6],
+                        v and positions[v][7],
+                    })
+                    repeated[word] = #unique
+                end
+                table.insert(vertices, repeated[word])
             end
 
             -- triangulate the face if it's not already a triangle
@@ -82,5 +98,5 @@ return function (path, uFlip, vFlip)
         end
     end
 
-    return result
+    return unique, result
 end
