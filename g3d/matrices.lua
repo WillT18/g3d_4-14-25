@@ -45,6 +45,7 @@ function matrix:reset()
     self[5],  self[6],  self[7],  self[8]  = 0, 1, 0, 0
     self[9],  self[10], self[11], self[12] = 0, 0, 1, 0
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+    return self
 end
 
 -- Revert to default rotation offset by a specified translation
@@ -54,6 +55,7 @@ function matrix:fromTranslation(x, y, z)
     self[5],  self[6],  self[7],  self[8]  = 0, 1, 0, y
     self[9],  self[10], self[11], self[12] = 0, 0, 1, z
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+    return self
 end
 
 -- Revert to the origin rotated by specified euler angles
@@ -65,6 +67,7 @@ function matrix:fromRotation(x, y, z)
     self[5],  self[6],  self[7],  self[8]  = sa*cb, sa*sb*sc + ca*cc, sa*sb*cc - ca*sc, 0
     self[9],  self[10], self[11], self[12] = -sb, cb*sc, cb*cc, 0
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+    return self
 end
 
 -- Unit matrix with scaled rotation vectors
@@ -74,6 +77,7 @@ function matrix:fromScale(x, y, z)
     self[5],  self[6],  self[7],  self[8]  = 0, y, 0, 0
     self[9],  self[10], self[11], self[12] = 0, 0, z, 0
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+    return self
 end
 
 -- automatically converts a matrix to a string
@@ -123,6 +127,33 @@ function matrix:setTransformationMatrix(translation, rotation, scale)
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
 end
 
+-- Get the 3-d position of this transformation matrix
+function matrix:getTranslation()
+    return self[4], self[8], self[12]
+end
+
+-- Get the euler angles of this matrix
+function matrix:getRotation()
+    return math.atan2(self[10], self[11]), math.asin(-self[9]), math.atan2(self[5], self[1])
+end
+
+-- Get the X component of the rotation matrix
+-- It is negative because this is the direction that is "looking" when you use the lookAtFrom method
+-- And also so that the Y "right" vector is relatively to the right of this vector
+function matrix:getForward()
+    return vectorNormalize(-self[1], -self[5], -self[9])
+end
+
+-- Get the Y component of the rotation matrix
+function matrix:getRight()
+    return vectorNormalize(self[2], self[6], self[10])
+end
+
+-- Get the Z component of the rotation matrix
+function matrix:getUp()
+    return vectorNormalize(self[3], self[7], self[11])
+end
+
 function matrix:getScale()
     -- does not account for negative scaling
     local sx = vectorMagnitude(self[1], self[5], self[9])
@@ -159,11 +190,12 @@ function matrix:copyTo(other)
     for i = 1, 16 do
         other[i] = self[i]
     end
+    return other
 end
 
 -- Overwrite this matrix's values with another matrix's values
 function matrix:copyFrom(other)
-    matrix.copyTo(other, self)
+    return matrix.copyTo(other, self)
 end
 
 -- Duplicate this matrix
@@ -206,6 +238,12 @@ function matrix:multiply(other)
     self[14]= a41*b12 + a42*b22 + a43*b32 + a44*b42
     self[15]= a41*b13 + a42*b23 + a43*b33 + a44*b43
     self[16]= a41*b14 + a42*b24 + a43*b34 + a44*b44
+    return self
+end
+
+-- Multiply without altering the original matrix, returning the result as a new matrix
+function matrix:multiplyNew(other)
+    return matrix.multiply(matrix.copyNew(self), other)
 end
 
 -- Determinant of the matrix
@@ -255,6 +293,12 @@ function matrix:invert()
         self[9], self[10],self[11],self[12]= i31, i32, i33, i34
         self[13],self[14],self[15],self[16]= i41, i42, i43, i44
     end
+    return self
+end
+
+-- Invert without altering the original matrix, returning the result as a new matrix
+function matrix:invertNew()
+    return matrix.invert(matrix.copyNew(self))
 end
 
 ----------------------------------------------------------------------------------------------------
