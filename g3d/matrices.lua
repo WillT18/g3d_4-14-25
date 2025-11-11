@@ -6,24 +6,27 @@ local vectors = require(g3d.path .. ".vectors")
 local vectorCrossProduct = vectors.crossProduct
 local vectorDotProduct = vectors.dotProduct
 local vectorNormalize = vectors.normalize
+local vectorMagnitude = vectors.magnitude
 
 ----------------------------------------------------------------------------------------------------
 -- matrix class
 ----------------------------------------------------------------------------------------------------
 -- matrices are 16 numbers in table, representing a 4x4 matrix like so:
 --
--- |  1   2   3   4  |
--- |                 |
--- |  5   6   7   8  |
--- |                 |
--- |  9   10  11  12 |
--- |                 |
--- |  13  14  15  16 |
+--       fwd  side  up  pos
+--
+--  x  |  1    2    3    4  |
+--     |                    |
+--  y  |  5    6    7    8  |
+--     |                    |
+--  z  |  9    10   11   12 |
+--     |                    |
+--     |  13   14   15   16 |
 
 local matrix = {}
 matrix.__index = matrix
 
-local function newMatrix()
+function matrix.new()
     local self = setmetatable({}, matrix)
 
     -- initialize a matrix as the identity matrix
@@ -33,6 +36,44 @@ local function newMatrix()
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
 
     return self
+end
+
+-- Revert a matrix to the identity matrix
+-- Multiplying a matrix by this does nothing
+function matrix:reset()
+    self[1],  self[2],  self[3],  self[4]  = 1, 0, 0, 0
+    self[5],  self[6],  self[7],  self[8]  = 0, 1, 0, 0
+    self[9],  self[10], self[11], self[12] = 0, 0, 1, 0
+    self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+end
+
+-- Revert to default rotation offset by a specified translation
+-- Multiplying a matrix by this shifts it in its relative space
+function matrix:fromTranslation(x, y, z)
+    self[1],  self[2],  self[3],  self[4]  = 1, 0, 0, x
+    self[5],  self[6],  self[7],  self[8]  = 0, 1, 0, y
+    self[9],  self[10], self[11], self[12] = 0, 0, 1, z
+    self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+end
+
+-- Revert to the origin rotated by specified euler angles
+-- Multiplying a matrix by this rotates it in it relative space
+function matrix:fromRotation(x, y, z)
+    local ca, cb, cc = math.cos(z), math.cos(y), math.cos(x)
+    local sa, sb, sc = math.sin(z), math.sin(y), math.sin(x)
+    self[1],  self[2],  self[3],  self[4]  = ca*cb, ca*sb*sc - sa*cc, ca*sb*cc + sa*sc, 0
+    self[5],  self[6],  self[7],  self[8]  = sa*cb, sa*sb*sc + ca*cc, sa*sb*cc - ca*sc, 0
+    self[9],  self[10], self[11], self[12] = -sb, cb*sc, cb*cc, 0
+    self[13], self[14], self[15], self[16] = 0, 0, 0, 1
+end
+
+-- Unit matrix with scaled rotation vectors
+-- Useful for changing the dimensions of a model
+function matrix:fromScale(x, y, z)
+    self[1],  self[2],  self[3],  self[4]  = x, 0, 0, 0
+    self[5],  self[6],  self[7],  self[8]  = 0, y, 0, 0
+    self[9],  self[10], self[11], self[12] = 0, 0, z, 0
+    self[13], self[14], self[15], self[16] = 0, 0, 0, 1
 end
 
 -- automatically converts a matrix to a string
@@ -109,8 +150,111 @@ function matrix:lookAtFrom(pos, target, up, orig_scale)
     local u_x, u_y, u_z = vectorCrossProduct(f_x,f_y,f_z, s_x,s_y,s_z)
 
     self[1], self[2], self[3]   = f_x*sx, s_x*sy, u_x*sz
-    self[5], self[6], self[7]   = f_y*sx, s_y*sy, u_y*sz 
-    self[9], self[10], self[11] = f_z*sx, s_z*sy, u_z*sz 
+    self[5], self[6], self[7]   = f_y*sx, s_y*sy, u_y*sz
+    self[9], self[10], self[11] = f_z*sx, s_z*sy, u_z*sz
+end
+
+-- Overwrite another matrix's values with this matrix's values
+function matrix:copyTo(other)
+    for i = 1, 16 do
+        other[i] = self[i]
+    end
+end
+
+-- Overwrite this matrix's values with another matrix's values
+function matrix:copyFrom(other)
+    matrix.copyTo(other, self)
+end
+
+-- Duplicate this matrix
+-- Useful because multiply alters the first matrix's values instead of constructing a new one, and the original may need to be preserved for some reason
+function matrix:copyNew()
+    local new = matrix.new()
+    matrix.copyTo(self, new)
+    return new
+end
+
+-- Shift a matrix's position in absolute space
+function matrix:offset(x, y, z)
+    self[4] = self[4] + x
+    self[8] = self[8] + y
+    self[12] = self[12] + z
+end
+
+-- Multiply this matrix by another matrix
+-- This matrix becomes the result of the operation, so if the original needs to be preserved it should be copied first
+function matrix:multiply(other)
+    local a11, a12, a13, a14, a21, a22, a23, a24, a31, a32, a33, a34, a41, a42, a43, a44 = unpack(self)
+    local b11, b12, b13, b14, b21, b22, b23, b24, b31, b32, b33, b34, b41, b42, b43, b44 = unpack(other)
+    -- first row
+    self[1] = a11*b11 + a12*b21 + a13*b31 + a14*b41
+    self[2] = a11*b12 + a12*b22 + a13*b32 + a14*b42
+    self[3] = a11*b13 + a12*b23 + a13*b33 + a14*b43
+    self[4] = a11*b14 + a12*b24 + a13*b34 + a14*b44
+    -- second row
+    self[5] = a21*b11 + a22*b21 + a23*b31 + a24*b41
+    self[6] = a21*b12 + a22*b22 + a23*b32 + a24*b42
+    self[7] = a21*b13 + a22*b23 + a23*b33 + a24*b43
+    self[8] = a21*b14 + a22*b24 + a23*b34 + a24*b44
+    -- third row
+    self[9] = a31*b11 + a32*b21 + a33*b31 + a34*b41
+    self[10]= a31*b12 + a32*b22 + a33*b32 + a34*b42
+    self[11]= a31*b13 + a32*b23 + a33*b33 + a34*b43
+    self[12]= a31*b14 + a32*b24 + a33*b34 + a34*b44
+    -- fourth row
+    self[13]= a41*b11 + a42*b21 + a43*b31 + a44*b41
+    self[14]= a41*b12 + a42*b22 + a43*b32 + a44*b42
+    self[15]= a41*b13 + a42*b23 + a43*b33 + a44*b43
+    self[16]= a41*b14 + a42*b24 + a43*b34 + a44*b44
+end
+
+-- Determinant of the matrix
+function matrix:determinant()
+    local a11, a12, a13, a14, a21, a22, a23, a24, a31, a32, a33, a34, a41, a42, a43, a44 = unpack(self)
+    return
+          a11 * (a22*a33*a44 + a23*a34*a42 + a24*a32*a43
+                -a24*a33*a42 - a22*a34*a43 - a23*a32*a44)
+        - a12 * (a21*a33*a44 + a23*a34*a41 + a24*a31*a43
+                -a24*a33*a41 - a21*a34*a43 - a23*a31*a44)
+        + a13 * (a21*a32*a44 + a22*a34*a41 + a24*a31*a42
+                -a24*a32*a41 - a21*a34*a42 - a22*a31*a44)
+        - a14 * (a21*a32*a43 + a22*a33*a41 + a23*a31*a42
+                -a23*a32*a41 - a21*a33*a42 - a22*a31*a43)
+end
+
+-- Inverse of the matrix
+-- An invertible matrix multiplied by its inverse is the identity matrix
+function matrix:invert()
+    local a11, a12, a13, a14, a21, a22, a23, a24, a31, a32, a33, a34, a41, a42, a43, a44 = unpack(self)
+
+    local i11 =  a22*a33*a44 - a22*a34*a43 - a32*a23*a44 + a32*a24*a43 + a42*a23*a34 - a42*a24*a33
+    local i12 = -a12*a33*a44 + a12*a34*a43 + a32*a13*a44 - a32*a14*a43 - a42*a13*a34 + a42*a14*a33
+    local i13 =  a12*a23*a44 - a12*a24*a43 - a22*a13*a44 + a22*a14*a43 + a42*a13*a24 - a42*a14*a23
+    local i14 = -a12*a23*a34 + a12*a24*a33 + a22*a13*a34 - a22*a14*a33 - a32*a13*a24 + a32*a14*a23
+
+    local i21 = -a21*a33*a44 + a21*a34*a43 + a31*a23*a44 - a31*a24*a43 - a41*a23*a34 + a41*a24*a33
+    local i22 =  a11*a33*a44 - a11*a34*a43 - a31*a13*a44 + a31*a14*a43 + a41*a13*a34 - a41*a14*a33
+    local i23 = -a11*a23*a44 + a11*a24*a43 + a21*a13*a44 - a21*a14*a43 - a41*a13*a24 + a41*a14*a23
+    local i24 =  a11*a23*a34 - a11*a24*a33 - a21*a13*a34 + a21*a14*a33 + a31*a13*a24 - a31*a14*a23
+
+    local i31  =  a21*a32*a44 - a21*a34*a42 - a31*a22*a44 + a31*a24*a42 + a41*a22*a34 - a41*a24*a32
+    local i32 = -a11*a32*a44 + a11*a34*a42 + a31*a12*a44 - a31*a14*a42 - a41*a12*a34 + a41*a14*a32
+    local i33 =  a11*a22*a44 - a11*a24*a42 - a21*a12*a44 + a21*a14*a42 + a41*a12*a24 - a41*a14*a22
+    local i34 = -a11*a22*a34 + a11*a24*a32 + a21*a12*a34 - a21*a14*a32 - a31*a12*a24 + a31*a14*a22
+
+    local i41 = -a21*a32*a43 + a21*a33*a42 + a31*a22*a43 - a31*a23*a42 - a41*a22*a33 + a41*a23*a32
+    local i42 =  a11*a32*a43 - a11*a33*a42 - a31*a12*a43 + a31*a13*a42 + a41*a12*a33 - a41*a13*a32
+    local i43 = -a11*a22*a43 + a11*a23*a42 + a21*a12*a43 - a21*a13*a42 - a41*a12*a23 + a41*a13*a22
+    local i44 =  a11*a22*a33 - a11*a23*a32 - a21*a12*a33 + a21*a13*a32 + a31*a12*a23 - a31*a13*a22
+
+    local det = a11*i11 + a12*i21 + a13*i31 + a14*i41
+    --assert(det ~= 0, "Matrix has no inverse.")
+    if (det ~= 0) then
+        self[1], self[2], self[3], self[4] = i11, i12, i13, i14
+        self[5], self[6], self[7], self[8] = i21, i22, i23, i24
+        self[9], self[10],self[11],self[12]= i31, i32, i33, i34
+        self[13],self[14],self[15],self[16]= i41, i42, i43, i44
+    end
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -162,4 +306,4 @@ function matrix:setViewMatrix(eye, target, up)
     self[13], self[14], self[15], self[16] = 0, 0, 0, 1
 end
 
-return newMatrix
+return setmetatable(matrix, {__call = matrix.new})
