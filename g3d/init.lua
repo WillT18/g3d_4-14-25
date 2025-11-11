@@ -52,6 +52,7 @@ g3d.camera = require(g3d.path .. ".camera")
 g3d.collisions = require(g3d.path .. ".collisions")
 g3d.loadObj = require(g3d.path .. ".objloader")
 g3d.vectors = require(g3d.path .. ".vectors")
+g3d.matrices = require(g3d.path .. ".matrices")
 g3d.camera.updateProjectionMatrix()
 g3d.camera.updateViewMatrix()
 
